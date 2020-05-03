@@ -124,11 +124,12 @@ def main():
 
 				dct = gensim.corpora.Dictionary(docs)
 				model2 = gensim.models.CoherenceModel(topics=truncated_term_rankings, texts=docs, dictionary=dct, coherence=options.coherence)
-				# model2 = gensim.models.CoherenceModel.for_topics(truncated_term_rankings, texts=docs, dictionary=dct, coherence='c_v')
 
 				coherence_scores[k] = validation_measure.evaluate_rankings( truncated_term_rankings )
 				coherence_scores2[k] = model2.get_coherence()
-				log.info("Model coherence (k=%d) = %.4f  %.4f" % (k,coherence_scores[k],coherence_scores2[k]) )
+
+				log.info("Model coherence [w2v] (k=%d) = %.4f" % (k,coherence_scores[k]) )
+				log.info("Model coherence [%s] (k=%d) = %.4f  %.4f" % (options.coherence, k,coherence_scores[k],coherence_scores2[k]) )
 			# Write results
 			results_out_path = os.path.join( dir_out, "%s_windowtopics_k%02d.pkl"  % (window_name, k) )
 			unsupervised.nmf.save_nmf_results( results_out_path, doc_ids, terms, term_rankings, partition, impl.W, impl.H, topic_labels )
