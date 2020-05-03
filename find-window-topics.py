@@ -8,11 +8,14 @@ from optparse import OptionParser
 import numpy as np
 import text.util
 import unsupervised.nmf, unsupervised.rankings, unsupervised.coherence
+import gensim
+from prettytable import PrettyTable
 
 # --------------------------------------------------------------
 
 def main():
 	parser = OptionParser(usage="usage: %prog [options] window_matrix1 window_matrix2...")
+	parser.add_option("-s", "--sim", action="store", type="string", dest="coherence", help="coherence model", default="c_v")
 	parser.add_option("--seed", action="store", type="int", dest="seed", help="initial random seed", default=1000)
 	parser.add_option("-k", action="store", type="string", dest="krange", help="number of topics", default=None)
 	parser.add_option("--maxiters", action="store", type="int", dest="maxiter", help="maximum number of iterations", default=200)
@@ -76,7 +79,7 @@ def main():
 		# Load the cached corpus
 		window_name = os.path.splitext( os.path.split( matrix_filepath )[-1] )[0]
 		log.info( "- Processing time window matrix for '%s' from %s ..." % (window_name,matrix_filepath) )
-		(X,terms,doc_ids) = text.util.load_corpus( matrix_filepath )
+		(X,terms,doc_ids, tfidf, docs) = text.util.load_corpus( matrix_filepath )
 		log.info( "Read %dx%d document-term matrix" % ( X.shape[0], X.shape[1] ) )
 
 		# Ensure that value of kmin and kmax are not greater than the number of documents
@@ -87,6 +90,7 @@ def main():
 		# Generate window topic model for the specified range of numbers of topics
 		log.info( "Generating models in range [%d,%d] ..." % ( actual_kmin, actual_kmax ) )
 		coherence_scores = {}
+		coherence_scores2 = {}
 		for k in range(actual_kmin,actual_kmax+1):
 			log.info( "Applying window topic modeling to matrix for k=%d topics ..." % k )
 			try:
@@ -111,11 +115,20 @@ def main():
 			# Print out the top terms?
 			if options.verbose:
 				log.info( unsupervised.rankings.format_term_rankings( term_rankings, top=10 ) )
+
+			
+
 			# Evaluate topic coherence of this topic model?
 			if not validation_measure is None:
 				truncated_term_rankings = unsupervised.rankings.truncate_term_rankings( term_rankings, options.top )
+
+				dct = gensim.corpora.Dictionary(docs)
+				model2 = gensim.models.CoherenceModel(topics=truncated_term_rankings, texts=docs, dictionary=dct, coherence=options.coherence)
+				# model2 = gensim.models.CoherenceModel.for_topics(truncated_term_rankings, texts=docs, dictionary=dct, coherence='c_v')
+
 				coherence_scores[k] = validation_measure.evaluate_rankings( truncated_term_rankings )
-				log.info("Model coherence (k=%d) = %.4f" % (k,coherence_scores[k]) )
+				coherence_scores2[k] = model2.get_coherence()
+				log.info("Model coherence (k=%d) = %.4f  %.4f" % (k,coherence_scores[k],coherence_scores2[k]) )
 			# Write results
 			results_out_path = os.path.join( dir_out, "%s_windowtopics_k%02d.pkl"  % (window_name, k) )
 			unsupervised.nmf.save_nmf_results( results_out_path, doc_ids, terms, term_rankings, partition, impl.W, impl.H, topic_labels )
@@ -127,6 +140,17 @@ def main():
 			top_k = [ p[0] for p in sx ][0:min(3,len(sx))]
 			log.info("- Top recommendations for number of topics for '%s': %s" % (window_name,",".join(map(str, top_k))) )
 			selected_ks.append( [matrix_filepath, top_k[0]] )
+
+			sx = sorted(coherence_scores2.items(), key=operator.itemgetter(1))
+			sx.reverse()
+			top_k = [ p[0] for p in sx ][0:min(3,len(sx))]
+			log.info("- [%s] Top recommendations for number of topics for '%s': %s" % (options.coherence, window_name,",".join(map(str, top_k))) )
+			
+		x = PrettyTable()
+		x.field_names = [""] + [str(k) for k in range(actual_kmin,actual_kmax+1)]
+		x.add_row(["w2v"] + [str(v) for v in coherence_scores.values()])
+		x.add_row([options.coherence] + [str(v) for v in coherence_scores2.values()])
+		print(x)
 
 	if not options.path_selected_ks is None:
 		log.info("Writing selected numbers of topics for %d window datasets to %s" % ( len(selected_ks), options.path_selected_ks ) )

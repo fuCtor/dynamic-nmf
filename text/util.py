@@ -13,7 +13,7 @@ def custom_tokenizer( s, min_term_length = 2 ):
 	"""
 	return [x.lower() for x in token_pattern.findall(s) if (len(x) >= min_term_length and x[0].isalpha() ) ]
 
-def preprocess( docs, stopwords, min_df = 3, min_term_length = 2, ngram_range = (1,1), apply_tfidf = True, apply_norm = True, tokenizer=custom_tokenizer ):
+def preprocess( raw_docs, stopwords, min_df = 3, min_term_length = 2, ngram_range = (1,1), apply_tfidf = True, apply_norm = True, tokenizer=custom_tokenizer ):
 	"""
 	Preprocess a list containing text documents stored as strings.
 	"""
@@ -23,7 +23,13 @@ def preprocess( docs, stopwords, min_df = 3, min_term_length = 2, ngram_range = 
 	else:
 		norm_function = None
 	tfidf = TfidfVectorizer(stop_words=stopwords, lowercase=True, strip_accents="unicode", tokenizer=tokenizer, use_idf=apply_tfidf, norm=norm_function, min_df = min_df, ngram_range = ngram_range) 
-	X = tfidf.fit_transform(docs)
+	X = tfidf.fit_transform(raw_docs)
+
+	analyze = tfidf.build_analyzer()
+
+
+	docs = [analyze(doc) for doc in raw_docs]
+
 	terms = []
 	# store the vocabulary map
 	v = tfidf.vocabulary_
@@ -31,7 +37,7 @@ def preprocess( docs, stopwords, min_df = 3, min_term_length = 2, ngram_range = 
 		terms.append("")
 	for term in v.keys():
 		terms[ v[term] ] = term
-	return (X,terms)
+	return (X,terms,tfidf, docs)
 
 def load_stopwords( inpath = "text/stopwords.txt" ):
 	"""
@@ -48,20 +54,20 @@ def load_stopwords( inpath = "text/stopwords.txt" ):
 
 # --------------------------------------------------------------
 
-def save_corpus( out_prefix, X, terms, doc_ids ):
+def save_corpus( out_prefix, X, terms, doc_ids, tfidf, docs ):
 	"""
 	Save a pre-processed scikit-learn corpus and associated metadata using Joblib.
 	"""
 	matrix_outpath = "%s.pkl" % out_prefix 
 	log.info( "Saving document-term matrix to %s" % matrix_outpath )
-	joblib.dump((X,terms,doc_ids), matrix_outpath ) 
+	joblib.dump((X,terms,doc_ids, tfidf, docs), matrix_outpath ) 
 
 def load_corpus( in_path ):
 	"""
 	Load a pre-processed scikit-learn corpus and associated metadata using Joblib.
 	"""
-	(X,terms,doc_ids) = joblib.load( in_path )
-	return (X, terms, doc_ids)
+	(X,terms,doc_ids,tfidf, docs) = joblib.load( in_path )
+	return (X, terms, doc_ids,tfidf, docs)
 
 # --------------------------------------------------------------
 
